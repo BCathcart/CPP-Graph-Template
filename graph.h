@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <iostream>
 #include <map>
+#include <queue>
 #include <vector>
 using namespace std;
 
@@ -26,6 +27,7 @@ class Edge
 {
 public:
     Edge(const T dest, const double weight, const T* id = nullptr);
+    void setWeight(const double weight);
     const double weight() const;
     const T dest() const;
     const T id() const;
@@ -43,6 +45,12 @@ Edge<T>::Edge(const T dest, const double weight, const T* id)
 {
     if (id != nullptr)
         id_ = *id;
+}
+
+template <class T>
+void Edge<T>::setWeight(const double weight)
+{
+    weight_ = weight;
 }
 
 template <class T>
@@ -71,12 +79,15 @@ class Vertex
 public:
     ~Vertex();
     bool addEdge(const T dest, const double weight, const T* id = nullptr);
+    bool updateEdgeWeight(const T dest, const double weight) const;
     bool removeEdge(const T dest);
     const double weight(const T dest) const;
     const vector<Edge<T>* > edgeList() const;
 
 private:
     vector<Edge<T>* > edges_;
+
+    Edge<T>* getEdge(const T dest) const;
 };
 
 template <class T>
@@ -91,15 +102,30 @@ Vertex<T>::~Vertex()
 template <class T>
 bool Vertex<T>::addEdge(const T dest, const double weight, const T* id)
 {
-    for (const Edge<T>* edge : edges_)
+    if (!getEdge(dest))
     {
-        if (edge->dest() == dest)
-        {
-            return false;
-        }
+        edges_.push_back(new Edge<T>(dest, weight, id));
+        return true;
     }
-    edges_.push_back(new Edge<T>(dest, weight, id));
-    return true;
+    else
+    {
+        return false;
+    }
+}
+
+template <class T>
+bool Vertex<T>::updateEdgeWeight(const T dest, const double weight) const
+{
+    Edge<T>* edge = getEdge(dest);
+    if (edge)
+    {
+        edge->setWeight(weight);
+        return true;
+    } 
+    else
+    {
+        return false;
+    }
 }
 
 template <class T>
@@ -119,20 +145,34 @@ bool Vertex<T>::removeEdge(const T dest)
 template <class T>
 const double Vertex<T>::weight(const T dest) const
 {
-    for (const Edge<T>* edge : edges_)
+    const Edge<T>* edge = getEdge(dest);
+    if (edge)
     {
-        if (edge->dest() == dest)
-        {
-            return edge->weight();
-        }
+        return edge->weight();
+    } 
+    else
+    {
+        return std::numeric_limits<double>::infinity();
     }
-    return std::numeric_limits<double>::infinity();
 }
 
 template <class T>
 const vector<Edge<T>* > Vertex<T>::edgeList() const
 {
     return edges_;
+}
+
+template <class T>
+Edge<T>* Vertex<T>::getEdge(const T dest) const
+{   
+    for (Edge<T>* edge : edges_)
+    {
+        if (edge->dest() == dest)
+        {
+            return edge;
+        }
+    }
+    return nullptr;
 }
 
 /*** GRAPH ***/
@@ -149,7 +189,7 @@ public:
     bool removeVertex(const T id);
     bool addEdge(const T src, const T dest, const double weight, const T* id = nullptr);
     bool removeEdge(const T src, const T dest);
-    // bool updateEdge(const T src, const T dest, const double weight, const T* id = nullptr); // TODO: implement
+    bool updateEdgeWeight(const T src, const T dest, const double weight);
     const vector<T> bestPath(const T src, const T dest) const;
     void print() const;
 
@@ -254,6 +294,37 @@ bool Graph<T>::addEdge(const T src, const T dest, const double weight, const T* 
 }
 
 template <class T>
+bool Graph<T>::updateEdgeWeight(const T src, const T dest, const double weight)
+{
+    Vertex<T>* src_vertex = nullptr;
+    Vertex<T>* dest_vertex = nullptr;
+
+    if (src == dest)
+    {
+        cerr << "warning: cannot update edge wight: source and destination vertices are the same" << endl;
+        return false;
+    }
+
+    class map<const T, Vertex<T>* >::iterator src_it = vertices_.find(src);
+    if (src_it == vertices_.end())
+    {
+        cerr << "warning: cannot update edge weight: source vertex doesn't exist" << endl;
+    }
+    if (!vertices_.count(dest))
+    {
+        cerr << "warning: cannot update edge weight: destination vertex doesn't exist" << endl;
+    }
+
+    if (!src_it->second->updateEdgeWeight(dest, weight))
+    {
+        cerr << "warning: cannot update edge weight: edge doesn't exist" << endl;
+        return false;
+    }
+
+    return true;
+}
+
+template <class T>
 bool Graph<T>::removeEdge(const T src, const T dest)
 {
     class map<const T, Vertex<T>* >::iterator src_it = vertices_.find(src);
@@ -273,6 +344,7 @@ bool Graph<T>::removeEdge(const T src, const T dest)
     return success;
 }
 
+// Time complexity: O(ElogV)
 template <class T>
 const vector<T> Graph<T>::bestPath(const T src, const T dest) const
 {
@@ -293,30 +365,22 @@ const vector<T> Graph<T>::bestPath(const T src, const T dest) const
     }
 
     dist[src] = 0.0f;
-    map<const T, Vertex<T>* > vertices = vertices_;
 
-    while (vertices.size() > 0)
+    // Initialize priority queue with source vertex
+    priority_queue<pair<double, T>, vector<pair<double, T> >, greater<pair<double, T> > > vertices_queue;
+    vertices_queue.push(pair<double, T>(0, src));
+
+    while (!vertices_queue.empty())
     {
         // Get the vertex with the smallest distance from src
-        class map<const T, Vertex<T>* >::iterator vertex_it = vertices.begin();
-        T vertex = vertex_it->first;
-        double dist_to_vertex;
-        for (class map<const T, Vertex<T>* >::iterator it = std::next(vertex_it); it != vertices.end(); it++)
-        {
-            double new_dist = dist[it->first];
-            if (new_dist < dist[vertex])
-            {
-                vertex = it->first;
-                vertex_it = it;
-                dist_to_vertex = new_dist;
-            }
-        }
+        pair<double, T> smallest_pair = vertices_queue.top();
+        double dist_to_vertex = smallest_pair.first;
+        const T vertex = smallest_pair.second; 
+        vertices_queue.pop();
 
         // Stop searching if reached the dest vertex
         if (vertex == dest)
             break;
-
-        vertices.erase(vertex_it);
 
         // Check if there are now shorter distances to each neighbour
         const vector<Edge<T>* > edge_list = vertices_.find(vertex)->second->edgeList();
@@ -326,6 +390,9 @@ const vector<T> Graph<T>::bestPath(const T src, const T dest) const
             const T edge_dest = edge->dest();
             if (new_dist < dist[edge_dest])
             {
+                // Note: We may push duplicate vertices to the priority queue but this is expected
+                vertices_queue.push(pair<double, T>(new_dist, edge_dest));
+
                 dist[edge_dest] = new_dist;
                 previous_vertex[edge_dest] = vertex;
                 if (use_edge_id_)
