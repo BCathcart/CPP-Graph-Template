@@ -254,9 +254,6 @@ bool Graph<T>::removeVertex(const T id)
 template <class T>
 bool Graph<T>::addEdge(const T src, const T dest, const double weight, const T* id)
 {
-    Vertex<T>* src_vertex = nullptr;
-    Vertex<T>* dest_vertex = nullptr;
-
     if (src == dest)
     {
         cerr << "error: cannot add edge: source and destination vertices are the same." << endl;
@@ -296,9 +293,6 @@ bool Graph<T>::addEdge(const T src, const T dest, const double weight, const T* 
 template <class T>
 bool Graph<T>::updateEdgeWeight(const T src, const T dest, const double weight)
 {
-    Vertex<T>* src_vertex = nullptr;
-    Vertex<T>* dest_vertex = nullptr;
-
     if (src == dest)
     {
         cerr << "warning: cannot update edge wight: source and destination vertices are the same" << endl;
@@ -379,8 +373,9 @@ const vector<T> Graph<T>::bestPath(const T src, const T dest) const
         vertices_queue.pop();
 
         // Stop searching if reached the dest vertex
-        if (vertex == dest)
+        if (vertex == dest) {
             break;
+        }
 
         // Check if there are now shorter distances to each neighbour
         const vector<Edge<T>* > edge_list = vertices_.find(vertex)->second->edgeList();
@@ -396,14 +391,18 @@ const vector<T> Graph<T>::bestPath(const T src, const T dest) const
                 dist[edge_dest] = new_dist;
                 previous_vertex[edge_dest] = vertex;
                 if (use_edge_id_)
+                {
                     previous_edge[edge_dest] = edge->id();
+                }
             }
         }
     }
 
     // Return an empty vector if dest vertex is not reachable from src vertex
     if (dist[dest] == std::numeric_limits<double>::infinity())
+    {
         return vector<T>();
+    }
 
     /* Get the best path */
 
